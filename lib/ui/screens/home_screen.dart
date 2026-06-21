@@ -26,7 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final db = ctx.read<MusicDatabase>();
     await db.scanMusic();
     final controller = ctx.read<AudioPlayerController>();
-    await controller.loadPlaylist(db);
+    controller.loadPlaylist(db.songs);
     if (mounted) setState(() => _scanned = true);
   }
 

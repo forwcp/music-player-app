@@ -1,11 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:music_player_app/player/music_database.dart';
-import 'package:music_player_app/services/dlna_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class AudioPlayerController extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
-  final DlnaService _dlna = DlnaService();
 
   List<Map<String, dynamic>> _playlist = [];
   List<Map<String, dynamic>> get playlist => _playlist;
@@ -37,76 +35,122 @@ class AudioPlayerController extends ChangeNotifier {
   double get volume => _player.volume;
 
   AudioPlayerController() {
-    _dlna.addListener(_onDlnaChanged);
+    _player.positionStream.listen((pos) {
+      notifyListeners();
+    });
+
+    _player.playingStream.listen((playing) {
+      notifyListeners();
+    });
 
     _player.processingStateStream.listen((state) {
-      if (state == ProcessingState.completed && _currentIndex < _playlist.length - 1) {
-        playNext();
-      } else if (state == ProcessingState.completed) {
-        _player.stop();
-        notifyListeners();
+      if (state == ProcessingState.completed) {
+        if (hasNext) {
+          playNext();
+        } else {
+          _player.stop();
+          notifyListeners();
+        }
       }
     });
 
-    _player.positionStream.listen((pos) => notifyListeners());
-    _player.playingStream.listen((playing) => notifyListeners());
+    _player.playerErrorStream.listen((error) {
+      debugPrint('[AudioPlayer] Error: ${error.message}');
+      debugPrint('[AudioPlayer] Error details: ${error.details}');
+    });
   }
 
-  void _onDlnaChanged() {
-    if (_dlna.isConnected && _currentIndex >= 0) {
-      _castCurrentSongToDlna();
-    }
+  void loadPlaylist(List<Map<String, dynamic>> songs) {
+    _playlist = songs;
     notifyListeners();
   }
-
-  // ── Playlist ───────────────────────────────────────────────
-
-  Future<void> loadPlaylist(MusicDatabase db) async {
-    _playlist = db.songs;
-    notifyListeners();
-  }
-
-  // ── Playback (transparent DLNA forwarding) ─────────────────
 
   Future<void> playSong(int index) async {
-    if (index < 0 || index >= _playlist.length) return;
-    _currentIndex = index;
-    notifyListeners();
+    if (index < 0 || index >= _playlist.length) {
+      debugPrint('[AudioPlayer] Invalid index: $index, playlist length: ${_playlist.length}');
+      return;
+    }
 
-    if (_dlna.isConnected) {
-      await _dlna.castSong(this, index);
-    } else {
-      final song = _playlist[index];
-      await _player.setFilePath(song['path']);
+    _currentIndex = index;
+    final song = _playlist[index];
+    final path = song['path'];
+
+    debugPrint('[AudioPlayer] === Starting playSong ===');
+    debugPrint('[AudioPlayer] Index: $index');
+    debugPrint('[AudioPlayer] Title: ${song['title']}');
+    debugPrint('[AudioPlayer] Path: $path');
+    debugPrint('[AudioPlayer] File exists: ${_fileExists(path)}');
+
+    try {
+      await _player.stop();
+      debugPrint('[AudioPlayer] Stopped previous playback');
+
+      await _player.setFilePath(path);
+      debugPrint('[AudioPlayer] setFilePath succeeded');
+
       await _player.play();
+      debugPrint('[AudioPlayer] play() succeeded, isPlaying: ${_player.playing}');
+
+      notifyListeners();
+    } catch (e, stackTrace) {
+      debugPrint('[AudioPlayer] ERROR: $e');
+      debugPrint('[AudioPlayer] Stack: $stackTrace');
+      notifyListeners();
+    }
+  }
+
+  bool _fileExists(String path) {
+    try {
+      return File(path).existsSync();
+    } catch (e) {
+      return false;
     }
   }
 
   Future<void> play() async {
-    if (_dlna.isConnected) {
-      await _dlna.remotePlay();
-    } else {
+    if (_currentIndex < 0 || _currentIndex >= _playlist.length) return;
+    try {
       await _player.play();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[AudioPlayer] Error playing: $e');
     }
-    notifyListeners();
   }
 
   Future<void> pause() async {
-    if (_dlna.isConnected) {
-      await _dlna.remotePause();
-    } else {
+    try {
       await _player.pause();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[AudioPlayer] Error pausing: $e');
     }
-    notifyListeners();
+  }
+
+  Future<void> seekTo(Duration position) async {
+    try {
+      await _player.seek(position);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[AudioPlayer] Error seeking: $e');
+    }
+  }
+
+  Future<void> playNext() async {
+    if (_currentIndex < 0 || _currentIndex >= _playlist.length) return;
+    if (hasNext) {
+      await playSong(_currentIndex + 1);
+    }
+  }
+
+  Future<void> playPrevious() async {
+    if (_currentIndex < 0 || _currentIndex >= _playlist.length) return;
+    if (hasPrevious) {
+      await playSong(_currentIndex - 1);
+    }
   }
 
   Future<void> togglePlayPause() async {
-    if (_currentIndex < 0) {
-      if (_playlist.isNotEmpty) {
-        await playSong(0);
-      }
-      return;
-    }
+    if (_currentIndex < 0 || _currentIndex >= _playlist.length) return;
     if (_player.playing) {
       await pause();
     } else {
@@ -114,52 +158,17 @@ class AudioPlayerController extends ChangeNotifier {
     }
   }
 
-  Future<void> seekTo(Duration position) async {
-    if (_dlna.isConnected) {
-      await _dlna.remoteSeek(position);
-    } else {
-      await _player.seek(position);
-    }
-    notifyListeners();
-  }
-
-  Future<void> playNext() async {
-    if (_dlna.isConnected) {
-      await _dlna.remoteNext();
-    } else if (_currentIndex < _playlist.length - 1) {
-      await playSong(_currentIndex + 1);
-    }
-  }
-
-  Future<void> playPrevious() async {
-    if (_dlna.isConnected) {
-      await _dlna.remotePrevious();
-    } else if (_currentIndex > 0) {
-      await playSong(_currentIndex - 1);
-    } else if (_player.position.inMilliseconds > 3000) {
-      await seekTo(Duration.zero);
-    }
-  }
-
-  Future<void> setVolume(double v) async {
-    if (_dlna.isConnected) {
-      final vol = (v * 100).round().clamp(0, 100);
-      await _dlna.remoteSetVolume(vol);
-    } else {
-      await _player.setVolume(v);
-    }
-    notifyListeners();
-  }
-
-  Future<void> _castCurrentSongToDlna() async {
-    if (_dlna.isConnected && _currentIndex >= 0) {
-      await _dlna.castSong(this, _currentIndex);
+  Future<void> setVolume(double vol) async {
+    try {
+      _player.volume = vol;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[AudioPlayer] Error setting volume: $e');
     }
   }
 
   @override
   void dispose() {
-    _dlna.dispose();
     _player.dispose();
     super.dispose();
   }

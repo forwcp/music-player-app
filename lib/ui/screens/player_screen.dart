@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:music_player_app/player/audio_player_controller.dart';
-import 'package:music_player_app/services/dlna_service.dart';
 import 'package:music_player_app/ui/theme/app_theme.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -31,6 +30,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _coverShadow = Tween<double>(begin: 0.2, end: 0.6).animate(
       CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
     );
+    super.initState();
   }
 
   @override
@@ -45,162 +45,6 @@ class _PlayerScreenState extends State<PlayerScreen>
     } else {
       _animController.reverse();
     }
-  }
-
-  /// Show the DLNA device picker as a modal bottom sheet
-  Future<void> _showDlnaPicker(BuildContext context) async {
-    final dlnaService = DlnaService();
-
-    // Start scanning
-    await dlnaService.startScan();
-
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A2E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (innerCtx, setInnerState) {
-            return Consumer<DlnaService>(
-              builder: (context, svc, _) {
-                final isConnected = svc.isConnected;
-                final connectedName = isConnected
-                    ? svc.connectedDevice!.name
-                    : null;
-
-                return Container(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            isConnected
-                                ? 'Casting to $connectedName'
-                                : 'Cast to Device',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          if (isConnected)
-                            IconButton(
-                              icon: const Icon(Icons.close_rounded, color: Colors.white),
-                              onPressed: () async {
-                                await svc.disconnect();
-                                setInnerState(() {});
-                                // Re-sync with provider
-                                // DLNA service notifies listeners internally
-                              },
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        isConnected
-                            ? 'Tap a device to switch, or disconnect above'
-                            : 'Scanning for nearby DLNA devices...',
-                        style: const TextStyle(
-                          color: Color(0xFF8888A0),
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Device list
-                      SizedBox(
-                        height: 280,
-                        child: svc.devices.isEmpty
-                            ? const Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    CircularProgressIndicator(
-                                      valueColor: AlwaysStoppedAnimation(Color(0xFF667eea)),
-                                    ),
-                                    SizedBox(height: 12),
-                                    Text(
-                                      'Searching...',
-                                      style: TextStyle(color: Color(0xFF8888A0)),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : ListView.builder(
-                                shrinkWrap: true,
-                                itemCount: svc.devices.length,
-                                itemBuilder: (context, index) {
-                                  final device = svc.devices[index];
-                                  final isSelected = isConnected &&
-                                      svc.connectedDevice!.name == device.name;
-                                  return ListTile(
-                                    leading: Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        gradient: isSelected
-                                            ? AppTheme.primaryGradient
-                                            : null,
-                                        color: isSelected ? null : const Color(0xFF0D0D0D),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Center(
-                                        child: Icon(
-                                          isSelected
-                                              ? Icons.cast_connected_rounded
-                                              : Icons.cast_rounded,
-                                          color: isSelected
-                                              ? Colors.white
-                                              : const Color(0xFF8888A0),
-                                          size: 22,
-                                        ),
-                                      ),
-                                    ),
-                                    title: Text(
-                                      device.name,
-                                      style: TextStyle(
-                                        color: isSelected
-                                            ? const Color(0xFF667eea)
-                                            : Colors.white,
-                                        fontWeight: isSelected
-                                            ? FontWeight.w600
-                                            : FontWeight.normal,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      device.deviceType,
-                                      style: const TextStyle(color: Color(0xFF8888A0)),
-                                    ),
-                                    onTap: () async {
-                                      if (isSelected) return;
-                                      await dlnaService.selectDevice(device);
-                                      // Notify the global controller too
-                                      // DLNA service notifies listeners internally
-                                      setInnerState(() {});
-                                      // Close after connecting
-                                      await Future.delayed(const Duration(milliseconds: 500));
-                                      if (mounted) Navigator.pop(ctx);
-                                    },
-                                  );
-                                },
-                              ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
-    );
   }
 
   @override
@@ -239,7 +83,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                     IconButton(
                       icon: const Icon(Icons.queue_music_rounded,
                           color: Colors.white),
-                      onPressed: () {},
+                      onPressed: () => Navigator.pop(context),
                     ),
                   ],
                 ),
@@ -357,108 +201,6 @@ class _PlayerScreenState extends State<PlayerScreen>
                     ),
                   ],
                 ),
-              ),
-
-              // ── DLNA Cast Status Bar ───────────────────────────────
-              Consumer<DlnaService>(
-                builder: (context, dlna, _) {
-                  if (!dlna.isConnected) {
-                    // Cast button — tap opens device picker
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: () => _showDlnaPicker(context),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: const Color(0xFF2D2D3F), width: 1),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.cast_rounded,
-                                    color: Color(0xFF8888A0), size: 20),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'Cast to Device',
-                                  style: TextStyle(
-                                    color: Color(0xFF8888A0),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  } else {
-                    // Connected — show status + controls
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 32),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF667eea), Color(0xFF764ba2)],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.cast_connected_rounded,
-                                color: Colors.white, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Casting to ${dlna.connectedDevice!.name}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            // Play/Pause (DLNA)
-                            IconButton(
-                              icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-                              onPressed: () => controller.play(),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.pause_rounded, color: Colors.white, size: 22),
-                              onPressed: () => controller.pause(),
-                            ),
-                            // Stop
-                            IconButton(
-                              icon: const Icon(Icons.stop_rounded, color: Colors.white, size: 22),
-                              onPressed: () async {
-                                final svc = context.read<DlnaService>();
-                                await svc.remoteStop();
-                              },
-                            ),
-                            // Disconnect
-                            IconButton(
-                              icon: Icon(Icons.close_rounded, color: Colors.white.withValues(alpha: 0.7), size: 20),
-                              onPressed: () async {
-                                await dlna.disconnect();
-                                // DLNA service notifies listeners internally
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-                },
               ),
 
               // Controls

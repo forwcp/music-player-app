@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:music_player_app/player/audio_player_controller.dart';
-import 'package:music_player_app/services/dlna_service.dart';
 import 'package:music_player_app/ui/theme/app_theme.dart';
 
 class BottomPlayerBar extends StatelessWidget {
@@ -10,7 +9,6 @@ class BottomPlayerBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<AudioPlayerController>();
-    final dlnaService = context.watch<DlnaService>();
 
     return GestureDetector(
       onTap: () {
@@ -70,13 +68,6 @@ class BottomPlayerBar extends StatelessWidget {
                   ],
                 ),
               ),
-              // DLNA indicator
-              if (dlnaService.isConnected)
-                Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: Icon(Icons.cast_connected_rounded,
-                      color: const Color(0xFF667eea), size: 22),
-                ),
               // Play/Pause
               IconButton(
                 icon: AnimatedBuilder(
