@@ -15,6 +15,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   late AnimationController _animController;
   late Animation<double> _coverScale;
   late Animation<double> _coverShadow;
+  bool _isShuffleOn = false;
+  bool _isRepeatOn = false;
 
   @override
   void initState() {
@@ -30,7 +32,6 @@ class _PlayerScreenState extends State<PlayerScreen>
     _coverShadow = Tween<double>(begin: 0.2, end: 0.6).animate(
       CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
     );
-    super.initState();
   }
 
   @override
@@ -210,9 +211,13 @@ class _PlayerScreenState extends State<PlayerScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.shuffle_rounded,
-                          color: Color(0xFF8888A0), size: 28),
-                      onPressed: () {},
+                      icon: Icon(Icons.shuffle_rounded,
+                          color: _isShuffleOn ? const Color(0xFF667eea) : const Color(0xFF8888A0), size: 28),
+                      onPressed: () {
+                        setState(() {
+                          _isShuffleOn = !_isShuffleOn;
+                        });
+                      },
                     ),
                     const SizedBox(width: 16),
                     IconButton(
@@ -262,9 +267,13 @@ class _PlayerScreenState extends State<PlayerScreen>
                     ),
                     const SizedBox(width: 16),
                     IconButton(
-                      icon: const Icon(Icons.repeat_rounded,
-                          color: Color(0xFF8888A0), size: 28),
-                      onPressed: () {},
+                      icon: Icon(Icons.repeat_rounded,
+                          color: _isRepeatOn ? const Color(0xFF667eea) : const Color(0xFF8888A0), size: 28),
+                      onPressed: () {
+                        setState(() {
+                          _isRepeatOn = !_isRepeatOn;
+                        });
+                      },
                     ),
                   ],
                 ),
@@ -288,7 +297,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                             ),
                             child: Slider(
-                              value: controller.volume,
+                              value: controller.volume.clamp(0.0, 1.0),
                               min: 0.0,
                               max: 1.0,
                               onChanged: (v) => controller.setVolume(v),

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -10,6 +12,12 @@ import 'ui/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Request permissions on Android
+  if (Platform.isAndroid) {
+    await Permission.audio.request();
+  }
+  
   runApp(const MusicPlayerApp());
 }
 

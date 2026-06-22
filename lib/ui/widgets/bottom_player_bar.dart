@@ -47,7 +47,9 @@ class BottomPlayerBar extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      controller.currentTitle,
+                      controller.currentIndex >= 0 
+                          ? controller.currentTitle 
+                          : 'No Track Selected',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -57,7 +59,9 @@ class BottomPlayerBar extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      controller.currentArtist,
+                      controller.currentIndex >= 0 
+                          ? controller.currentArtist 
+                          : 'Select a song to play',
                       style: const TextStyle(
                         color: Color(0xFF8888A0),
                         fontSize: 12,
@@ -67,6 +71,14 @@ class BottomPlayerBar extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              // Previous
+              IconButton(
+                icon: const Icon(Icons.skip_previous_rounded,
+                    color: Colors.white, size: 28),
+                onPressed: controller.hasPrevious 
+                    ? () => controller.playPrevious() 
+                    : null,
               ),
               // Play/Pause
               IconButton(
@@ -88,7 +100,9 @@ class BottomPlayerBar extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.skip_next_rounded,
                     color: Colors.white, size: 28),
-                onPressed: () => controller.playNext(),
+                onPressed: controller.hasNext 
+                    ? () => controller.playNext() 
+                    : null,
               ),
             ],
           ),

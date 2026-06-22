@@ -14,6 +14,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _scanned = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -23,11 +24,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _initMusic(BuildContext ctx) async {
     if (_scanned) return;
-    final db = ctx.read<MusicDatabase>();
-    await db.scanMusic();
-    final controller = ctx.read<AudioPlayerController>();
-    controller.loadPlaylist(db.songs);
-    if (mounted) setState(() => _scanned = true);
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final db = ctx.read<MusicDatabase>();
+      await db.scanMusic();
+      
+      if (!mounted) return;
+      
+      if (db.songs.isNotEmpty) {
+        final controller = context.read<AudioPlayerController>();
+        controller.loadPlaylist(db.songs);
+      }
+      
+      setState(() {
+        _scanned = db.songs.isNotEmpty;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('[HomeScreen] Error initializing music: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -41,9 +61,18 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Aura Music'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: () {
-              setState(() => _scanned = false);
+            icon: _isLoading 
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+            onPressed: _isLoading ? null : () {
+              setState(() {
+                _scanned = false;
+                _isLoading = true;
+              });
               _initMusic(context);
             },
           ),
@@ -62,54 +91,56 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${db.songs.length} tracks',
+                  _isLoading 
+                      ? 'Scanning...' 
+                      : '${db.songs.length} tracks',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
             ),
           ),
           Expanded(
-            child: db.songs.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.music_note_outlined,
-                          size: 80,
-                          color: Colors.white.withValues(alpha: 0.2),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : db.songs.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.music_note_outlined,
+                              size: 80,
+                              color: Colors.white.withValues(alpha: 0.2),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No music found',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Place .mp3/.flac/.wav files in your Music folder',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No music found',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Place .mp3/.flac/.wav files in your Music folder',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: controller.playlist.length,
-                    itemBuilder: (context, index) {
-                      final song = controller.playlist[index];
-                      return SongListTile(
-                        index: index,
-                        title: song['title'],
-                        artist: song['artist'],
-                        onTap: () => controller.playSong(index),
-                      );
-                    },
-                  ),
+                      )
+                    : ListView.builder(
+                        itemCount: controller.playlist.length,
+                        itemBuilder: (context, index) {
+                          final song = controller.playlist[index];
+                          return SongListTile(
+                            index: index,
+                            title: song['title'],
+                            artist: song['artist'],
+                            onTap: () => controller.playSong(index),
+                          );
+                        },
+                      ),
           ),
         ],
       ),
-      bottomNavigationBar: controller.currentIndex >= 0
-          ? const BottomPlayerBar()
-          : const SizedBox.shrink(),
+      bottomNavigationBar: const BottomPlayerBar(),
     );
   }
 }

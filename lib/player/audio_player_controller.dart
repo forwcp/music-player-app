@@ -1,6 +1,6 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class AudioPlayerController extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
@@ -54,9 +54,8 @@ class AudioPlayerController extends ChangeNotifier {
       }
     });
 
-    _player.playerErrorStream.listen((error) {
-      debugPrint('[AudioPlayer] Error: ${error.message}');
-      debugPrint('[AudioPlayer] Error details: ${error.details}');
+    _player.errorStream.listen((error) {
+      debugPrint('[AudioPlayer] Error: $error');
     });
   }
 
@@ -160,7 +159,7 @@ class AudioPlayerController extends ChangeNotifier {
 
   Future<void> setVolume(double vol) async {
     try {
-      _player.volume = vol;
+      _player.setVolume(vol);
       notifyListeners();
     } catch (e) {
       debugPrint('[AudioPlayer] Error setting volume: $e');

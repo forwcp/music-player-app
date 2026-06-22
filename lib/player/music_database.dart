@@ -9,12 +9,14 @@ class MusicDatabase extends ChangeNotifier {
   Future<void> scanMusic() async {
     _songs.clear();
 
-    // Request permission first
+    // Request permission first - Android 13+ uses READ_MEDIA_AUDIO, older uses STORAGE
     if (!kIsWeb && Platform.isAndroid) {
+      // Android 13+ (API 33+) uses audio permission
       final audioStatus = await Permission.audio.status;
-      if (audioStatus.isDenied) {
+      if (audioStatus.isDenied || audioStatus.isPermanentlyDenied) {
         final result = await Permission.audio.request();
         if (result.isDenied || result.isPermanentlyDenied) {
+          debugPrint('[MusicDatabase] Audio permission denied');
           notifyListeners();
           return;
         }
@@ -24,36 +26,39 @@ class MusicDatabase extends ChangeNotifier {
     final directories = <String>[];
 
     if (!kIsWeb && Platform.isAndroid) {
-      final musicDir = Directory('/storage/emulated/0/Music');
-      if (musicDir.existsSync()) directories.add(musicDir.path);
+      // Standard music directories
+      final standardDirs = [
+        '/storage/emulated/0/Music',
+        '/storage/emulated/0/Download',
+        '/storage/emulated/0/Podcasts',
+      ];
       
-      final downloadsDir = Directory('/storage/emulated/0/Download');
-      if (downloadsDir.existsSync()) directories.add(downloadsDir.path);
+      for (final dirPath in standardDirs) {
+        final dir = Directory(dirPath);
+        if (dir.existsSync() && !directories.contains(dirPath)) {
+          directories.add(dirPath);
+        }
+      }
 
-      final podcastsDir = Directory('/storage/emulated/0/Podcasts');
-      if (podcastsDir.existsSync()) directories.add(podcastsDir.path);
-
-      final ringtonesDir = Directory('/storage/emulated/0/Ringtones');
-      if (ringtonesDir.existsSync()) directories.add(ringtonesDir.path);
-
-      final alarmsDir = Directory('/storage/emulated/0/Alarms');
-      if (alarmsDir.existsSync()) directories.add(alarmsDir.path);
-
-      final notificationsDir = Directory('/storage/emulated/0/Notifications');
-      if (notificationsDir.existsSync()) directories.add(notificationsDir.path);
-
-      // Scan all top-level directories
-      final rootDir = Directory('/storage/emulated/0');
-      if (rootDir.existsSync()) {
-        for (final entry in rootDir.listSync()) {
-          if (entry is Directory && !directories.contains(entry.path)) {
-            final name = entry.path.split('/').last.toLowerCase();
-            if (name.contains('music') || name.contains('song') || 
-                name.contains('audio') || name.contains('media')) {
-              directories.add(entry.path);
+      // Scan all top-level directories for music-related folders
+      try {
+        final rootDir = Directory('/storage/emulated/0');
+        if (rootDir.existsSync()) {
+          for (final entry in rootDir.listSync()) {
+            if (entry is Directory) {
+              final name = entry.path.split('/').last.toLowerCase();
+              final isMusicRelated = name.contains('music') || 
+                                     name.contains('song') || 
+                                     name.contains('audio') || 
+                                     name.contains('media');
+              if (isMusicRelated && !directories.contains(entry.path)) {
+                directories.add(entry.path);
+              }
             }
           }
         }
+      } catch (e) {
+        debugPrint('[MusicDatabase] Error scanning root dirs: $e');
       }
     }
 
@@ -61,7 +66,9 @@ class MusicDatabase extends ChangeNotifier {
       final username = Platform.environment['USERNAME'] ?? Platform.environment['USER'];
       if (username != null) {
         final musicFolder = Directory('C:/Users/$username/Music');
-        if (musicFolder.existsSync()) directories.add(musicFolder.path);
+        if (musicFolder.existsSync()) {
+          directories.add(musicFolder.path);
+        }
       }
     }
 
@@ -69,24 +76,35 @@ class MusicDatabase extends ChangeNotifier {
       final home = Platform.environment['HOME'];
       if (home != null) {
         final musicFolder = Directory('$home/Music');
-        if (musicFolder.existsSync()) directories.add(musicFolder.path);
+        if (musicFolder.existsSync()) {
+          directories.add(musicFolder.path);
+        }
       }
     }
 
+    // Scan each directory
     for (final dirPath in directories) {
       final dir = Directory(dirPath);
       if (dir.existsSync()) {
-        _scanDirectory(dir);
+        _scanDirectory(dir, depth: 0);
       }
     }
 
+    // Sort by title
     _songs.sort((a, b) => a['title'].compareTo(b['title']));
+    debugPrint('[MusicDatabase] Found ${_songs.length} songs');
     notifyListeners();
   }
 
-  void _scanDirectory(Directory dir) {
+  void _scanDirectory(Directory dir, {int depth = 0}) {
+    if (depth > 5) {
+      debugPrint('[MusicDatabase] Skipping deep directory: ${dir.path}');
+      return;
+    }
+    
     try {
-      dir.listSync().forEach((entity) {
+      final entities = dir.listSync(recursive: false);
+      for (final entity in entities) {
         if (entity is File && _isAudioFile(entity.path)) {
           final name = entity.path.split(Platform.pathSeparator).last;
           _songs.add({
@@ -97,11 +115,11 @@ class MusicDatabase extends ChangeNotifier {
             'duration': 0,
           });
         } else if (entity is Directory) {
-          _scanDirectory(entity);
+          _scanDirectory(entity, depth: depth + 1);
         }
-      });
+      }
     } catch (e) {
-      // Skip inaccessible directories
+      debugPrint('[MusicDatabase] Error scanning directory ${dir.path}: $e');
     }
   }
 
